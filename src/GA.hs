@@ -1,7 +1,21 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 
-module GA () where
+module GA
+  ( e1,
+    e2,
+    e3,
+    e12,
+    e23,
+    e31,
+    e21,
+    e32,
+    e13,
+    e123,
+    mexp,
+    var,
+  )
+where
 
 import Data.Function (on)
 import Data.List (partition)
@@ -18,13 +32,43 @@ data M2 a where
   Sum :: M2 a -> M2 a -> M2 a
   Func :: FuncThing -> M2 a -> M2 a
   Var :: String -> M2 a
-  deriving (Show)
 
+instance (Eq a, Num a, Show a) => Show (M2 a) where
+  show = pretty
+
+instance (Fractional a) => Fractional (M2 a) where
+  fromRational = Scal . fromRational
+  recip = error "inverse not implemented"
+
+e1 :: M2 Double
 e1 = Basis1
 
+e2 :: M2 Double
 e2 = Basis2
 
+e3 :: M2 Double
 e3 = Basis3
+
+e12 :: M2 Double
+e12 = Mul Basis1 Basis2
+
+e23 :: M2 Double
+e23 = Mul Basis2 Basis3
+
+e31 :: M2 Double
+e31 = Mul Basis3 Basis1
+
+e21 :: M2 Double
+e21 = Mul Basis2 Basis1
+
+e32 :: M2 Double
+e32 = Mul Basis3 Basis2
+
+e13 :: M2 Double
+e13 = Mul Basis1 Basis3
+
+e123 :: M2 Double
+e123 = Mul (Mul Basis1 Basis2) Basis3
 
 mexp :: (Floating a) => M2 a -> M2 a
 mexp = Func Exp
@@ -77,8 +121,19 @@ m4add (M4 a) (M4 b) = M4 $ a ++ b
 toM4 :: (Num a, Eq a) => M2 a -> M4 a Basis
 toM4 = simplify . toM4Helper
 
+-- Because basisCollapse is linear, it struggles
+-- with things like e123e123, in which the second e1
+-- needs to move backwards 2 places to reach e1^2 and simplify.
+-- The is a flaw, and basisCollapse needs to be rewritten into
+-- a proper sorting algorithm.
+-- However, in my testing, the expressions I used
+-- never needed more than 2 stages of simplification.
+-- Here I do 4 to be safe, this works well for now.
 simplify :: (Num a, Eq a, Ord b) => M4 a b -> M4 a b
-simplify = m4map scalarCollapse . m4map basisCollapse
+simplify = simplifyHelper . simplifyHelper . simplifyHelper . simplifyHelper
+
+simplifyHelper :: (Num a, Eq a, Ord b) => M4 a b -> M4 a b
+simplifyHelper = m4map scalarCollapse . m4map basisCollapse
 
 toM4Helper :: (Num a, Eq a) => M2 a -> M4 a Basis
 toM4Helper = \case
@@ -146,3 +201,6 @@ prettyAtom = \case
   Scalar2 s -> show s
   Func2 Exp m -> "mexp(" ++ prettyM4 m ++ ")"
   Var2 name -> name
+
+pretty :: (Show a, Num a, Eq a) => M2 a -> String
+pretty = prettyM4 . toM4
