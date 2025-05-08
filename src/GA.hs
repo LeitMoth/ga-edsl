@@ -35,8 +35,8 @@ var = Var
 instance (Num a) => Num (M2 a) where
   (+) = Sum
   (*) = Mul
-  abs = error "not implemented"
-  signum = error "not implemented"
+  abs = error "abs not implemented"
+  signum = error "signum not implemented"
   fromInteger = Scal . fromInteger
   negate = Mul (Scal (-1))
 
