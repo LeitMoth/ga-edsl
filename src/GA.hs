@@ -18,20 +18,50 @@ module GA
     e13,
     e123,
     var,
+    dot,
     brev,
+    binv,
     tau,
     rotor,
     rotate,
     eval,
+    plot,
+    t,
   )
 where
 
 import Data.Function (on)
-import Data.List (partition)
+import Data.List (find, partition)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, listToMaybe)
+import Graphics.Gnuplot.Simple (plotMesh3d)
 
-data FuncThing = Exp
+offset :: (Fractional a) => (a, a, a) -> (a, a, a)
+offset (x, y, z) = (x + 0.1, y + 0.1, z + 0.1)
+
+thicken :: (Fractional a) => [(a, a, a)] -> [[(a, a, a)]]
+thicken points = [points, map offset points]
+
+t :: M2 a
+t = var "t"
+
+plot :: [(String, M2 Double)] -> M2 Double -> IO ()
+plot vars thing = plotMesh3d [] [] graphdata
+  where
+    f time = eval (("t", Scal time) : vars) thing
+    points = map (vector . f) [0, 0.05 .. 1]
+    graphdata = thicken points
+
+vector :: (Num a, Eq a) => M2 a -> (a, a, a)
+vector m = (x, y, z)
+  where
+    M4 m4 = toM4 m
+    findBasis b = maybe 0 scalarPart (find (((==) `on` nonScalarPart) [Base2 b]) m4)
+    x = findBasis X
+    y = findBasis Y
+    z = findBasis Z
+
+data FuncThing = Exp | Inv
   deriving (Eq, Show)
 
 data M2 a where
@@ -51,14 +81,18 @@ instance (Fractional a) => Fractional (M2 a) where
   fromRational = Scal . fromRational
   recip = \case
     Scal a -> Scal (1 / a)
-    _ -> error "inverse not implemented"
+    b -> Func Inv b
+
+-- _ -> error "inverse not implemented"
 
 unimplementedTrig :: String
 unimplementedTrig = "Only pi and exp work, trig functions don't"
 
-instance (Floating a) => Floating (M2 a) where
+instance (Floating a, Eq a) => Floating (M2 a) where
   pi = Scal pi
   exp = Func Exp
+  sqrt (Scal x) = Scal (sqrt x)
+  sqrt x = Scal (sqrt (resolveScalar (toM4 x)))
   log = error unimplementedTrig
   sin = error unimplementedTrig
   cos = error unimplementedTrig
@@ -71,17 +105,18 @@ instance (Floating a) => Floating (M2 a) where
   acosh = error unimplementedTrig
   atanh = error unimplementedTrig
 
-tau :: (Floating a) => M2 a
+tau :: (Floating a, Eq a) => M2 a
 tau = 2 * pi
 
 type Ctx a = M.Map String (M2 a)
 
-interp :: (Fractional a) => Ctx a -> M2 a -> M2 a
+interp :: (Fractional a, Eq a) => Ctx a -> M2 a -> M2 a
 interp ctx = \case
   Mul a b -> Mul (interp ctx a) (interp ctx b)
   Sum a b -> Sum (interp ctx a) (interp ctx b)
   Func f a -> case f of
     Exp -> taylorExp 16 a'
+    Inv -> Scal $ resolveScalar (toM4 a')
     where
       a' = interp ctx a
   Var name -> ctx M.! name
@@ -95,24 +130,30 @@ pow n m = foldr Mul (Scal 1) (replicate (fromEnum n) m)
 
 taylorExp :: (Fractional a) => Integer -> M2 a -> M2 a
 taylorExp 0 _ = 1
-taylorExp level m = Sum (taylorExp (level - 1) m) (Mul (Scal (1 / fromInteger (factorial level))) (pow level m))
+taylorExp level m =
+  Sum
+    (taylorExp (level - 1) m)
+    (Mul (Scal (1 / fromInteger (factorial level))) (pow level m))
 
-eval :: (Fractional a) => [(String, M2 a)] -> M2 a -> M2 a
+eval :: (Fractional a, Eq a) => [(String, M2 a)] -> M2 a -> M2 a
 eval vars = interp (M.fromList vars)
 
 brev :: (Num a) => M2 a -> M2 a
 brev = negate
 
--- binv :: Fractional a => M2 a -> M2 a
--- binv b = Mul (birev b) (Func Inv (Mul b (birev b)))
+binv :: (Fractional a) => M2 a -> M2 a
+binv b = Mul (brev b) (Func Inv (Mul b (brev b)))
 
-rotor :: (Floating a) => M2 a -> M2 a -> M2 a
+rotor :: (Floating a, Eq a) => M2 a -> M2 a -> M2 a
 rotor plane angle = exp (-(plane * (angle / 2)))
 
-rotate :: (Floating a) => M2 a -> M2 a -> M2 a -> M2 a
-rotate plane angle x = (-b) * x * b
+rotate :: (Floating a, Eq a) => M2 a -> M2 a -> M2 a -> M2 a
+rotate plane angle x = b * x * binv b
   where
     b = rotor plane angle
+
+dot :: (Fractional a) => M2 a -> M2 a -> M2 a
+dot a b = 0.5 * (a * b + b * a)
 
 e1 :: M2 Double
 e1 = Basis1
@@ -212,6 +253,10 @@ toM4Helper = \case
 m4map :: ([Atom a b] -> [Atom a b]) -> M4 a b -> M4 a b
 m4map f (M4 dnf) = M4 (map f dnf)
 
+resolveScalar :: (Num a, Eq a) => M4 a b -> a
+resolveScalar = \case
+  M4 m4 -> scalarPart (head m4)
+
 scalarCollapse :: (Num a, Eq a) => [Atom a b] -> [Atom a b]
 scalarCollapse as = list'
   where
@@ -233,7 +278,7 @@ likeTermCollapseHelper (p : ps) = list
     total = sum $ map scalarPart likeTerms
     ps'' = likeTermCollapseHelper ps'
     list =
-      if total /= 0
+      if total /= 1
         then (Scalar2 total : nonScalarPart p) : ps''
         else p : ps''
 
@@ -241,7 +286,7 @@ nonScalarPart :: [Atom a b] -> [Atom a b]
 nonScalarPart = filter (\case Scalar2 _ -> False; _ -> True)
 
 scalarPart :: (Num a, Eq a) => [Atom a b] -> a
-scalarPart = fromMaybe 0 . scalarPartMaybe
+scalarPart = fromMaybe 1 . scalarPartMaybe
 
 scalarPartMaybe :: (Num a, Eq a) => [Atom a b] -> Maybe a
 scalarPartMaybe as = do
@@ -286,7 +331,7 @@ prettyProduct :: (Ord a, Show a, Num a, Eq a, Show b) => [Atom a b] -> String
 prettyProduct [] = "1"
 prettyProduct as = full
   where
-    s = fromMaybe 1 (scalarPartMaybe as) -- if we can't find one, default to identity
+    s = scalarPart as
     rest = nonScalarPart as
     full =
       case compare s 0 of
@@ -310,7 +355,8 @@ prettyAtom :: (Ord a, Show a, Num a, Eq a, Show b) => Atom a b -> String
 prettyAtom = \case
   Base2 b -> show b
   Scalar2 s -> show s
-  Func2 Exp m -> "mexp(" ++ prettyM4 m ++ ")"
+  Func2 Exp m -> "exp(" ++ prettyM4 m ++ ")"
+  Func2 Inv m -> "(" ++ prettyM4 m ++ ")^-1"
   Var2 name -> name
 
 pretty :: (Ord a, Show a, Num a, Eq a) => M2 a -> String
