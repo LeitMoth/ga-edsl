@@ -9,27 +9,27 @@ The language supports the following operations / constants:
   - `e12` = `-e21`, `e23` = `-e32`, `e31` = `-e13`
   - `e123` = `i`
 - Binary Operations:
- - Geometric product `*`
- - Inner (dot) product `dot`
- - Outer (wedge) product `wedge` = `/\`
+  - Geometric product `*`
+  - Inner (dot) product `dot`
+  - Outer (wedge) product `wedge` = `/\`
 - Multivector Functions:
- - `exp`, the taylor series for e^x.
- - `norm` for normalizing vectors.
- - `bnorm` for normalizing bivectors.
- - `brev` for reversing bivectors.
- - `binv` for inverting bivectors.
+  - `exp`, the taylor series for e^x.
+  - `norm` for normalizing vectors.
+  - `bnorm` for normalizing bivectors.
+  - `brev` for reversing bivectors.
+  - `binv` for inverting bivectors.
 - Rotation helper functions:
- - `rotor <plane> <angle>` for generating a rotor.
- - `rotate <plane> <angle> <vector>` for rotating a vector within a plane.
+  - `rotor <plane> <angle>` for generating a rotor.
+  - `rotate <plane> <angle> <vector>` for rotating a vector within a plane.
 - Evaluation:
- - `varName = var "varName"` declaring variables to be used in expressions.
- - `eval [("varName", value),...] $ <expr>` providing variables with values then simplifying.
+  - `varName = var "varName"` declaring variables to be used in expressions.
+  - `eval [("varName", value),...] $ <expr>` providing variables with values then simplifying.
 - Plotting
- - `t`, a variable provided that is used in parametric plots.
- - `plot [("name",val),...] $ <expr>`, like eval, but assumes you are using `t` in your expression, and creates a parametric plot from t = 0 to t = 1.
+  - `t`, a variable provided that is used in parametric plots.
+  - `plot [("name",val),...] $ <expr>`, like eval, but assumes you are using `t` in your expression, and creates a parametric plot from t = 0 to t = 1.
 - Constants
- - `pi = 0.5*tau`
- - `tau = 2*pi`
+  - `pi = 0.5*tau`
+  - `tau = 2*pi`
 
 Note that some functions, such as the dot and wege products only
 expect vectors as inputs, and will misbehave if they are given
@@ -39,6 +39,8 @@ improved upon in the future, but for now, keep it in mind.
 The plotting functionality assumes you have gnuplot installed.
 
 ## Examples
+
+Run `cabal repl` to get started.
 
 Writing the vector [1,7,5]:
 
@@ -70,6 +72,16 @@ Multiply 3 things:
 Demonstrate that the wedge is anticommutative on the basis vectors:
 ```haskell
 e1 /\ e2 + e2 /\ e1
+```
+
+Variables:
+```haskell
+x = var "x"
+y = var "y"
+
+foo = (x*e1+y*e2)*(e123 + (y-x)*e3)
+
+eval [("x", 5),("y", e3)] foo
 ```
 
 Plot a rotation using rotors in gnuplot:
@@ -116,3 +128,9 @@ This would not typically be the best thing to do code wise,
 but it allows me to do additional work and cleanup on the AST
 without requiring the user to call some additional "simplify"
 function.
+
+Once I had the data structures in place, things got a lot easier.
+The tricky part after that was normalization. This seemed
+very intimidating at first, but was not an issue after
+I realized it needed to happen in separate basis, scalar, and
+like-term stages.
