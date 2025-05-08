@@ -1,6 +1,11 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 
+-- References:
+-- https://geometrica.vialattea.net/en/the-rotor/
+-- https://rigidgeometricalgebra.org/wiki/index.php?title=Reverses
+-- https://jacquesheunis.com/post/rotors/
+
 module GA
   ( e1,
     e2,
@@ -12,8 +17,11 @@ module GA
     e32,
     e13,
     e123,
-    mexp,
     var,
+    brev,
+    tau,
+    rotor,
+    rotate,
     eval,
   )
 where
@@ -41,7 +49,30 @@ instance (Ord a, Eq a, Num a, Show a) => Show (M2 a) where
 
 instance (Fractional a) => Fractional (M2 a) where
   fromRational = Scal . fromRational
-  recip = error "inverse not implemented"
+  recip = \case
+    Scal a -> Scal (1 / a)
+    _ -> error "inverse not implemented"
+
+unimplementedTrig :: String
+unimplementedTrig = "Only pi and exp work, trig functions don't"
+
+instance (Floating a) => Floating (M2 a) where
+  pi = Scal pi
+  exp = Func Exp
+  log = error unimplementedTrig
+  sin = error unimplementedTrig
+  cos = error unimplementedTrig
+  asin = error unimplementedTrig
+  acos = error unimplementedTrig
+  atan = error unimplementedTrig
+  sinh = error unimplementedTrig
+  cosh = error unimplementedTrig
+  asinh = error unimplementedTrig
+  acosh = error unimplementedTrig
+  atanh = error unimplementedTrig
+
+tau :: (Floating a) => M2 a
+tau = 2 * pi
 
 type Ctx a = M.Map String (M2 a)
 
@@ -50,7 +81,7 @@ interp ctx = \case
   Mul a b -> Mul (interp ctx a) (interp ctx b)
   Sum a b -> Sum (interp ctx a) (interp ctx b)
   Func f a -> case f of
-    Exp -> taylorExp 6 a'
+    Exp -> taylorExp 16 a'
     where
       a' = interp ctx a
   Var name -> ctx M.! name
@@ -68,6 +99,20 @@ taylorExp level m = Sum (taylorExp (level - 1) m) (Mul (Scal (1 / fromInteger (f
 
 eval :: (Fractional a) => [(String, M2 a)] -> M2 a -> M2 a
 eval vars = interp (M.fromList vars)
+
+brev :: (Num a) => M2 a -> M2 a
+brev = negate
+
+-- binv :: Fractional a => M2 a -> M2 a
+-- binv b = Mul (birev b) (Func Inv (Mul b (birev b)))
+
+rotor :: (Floating a) => M2 a -> M2 a -> M2 a
+rotor plane angle = exp (-(plane * (angle / 2)))
+
+rotate :: (Floating a) => M2 a -> M2 a -> M2 a -> M2 a
+rotate plane angle x = (-b) * x * b
+  where
+    b = rotor plane angle
 
 e1 :: M2 Double
 e1 = Basis1
@@ -98,9 +143,6 @@ e13 = Mul Basis1 Basis3
 
 e123 :: M2 Double
 e123 = Mul (Mul Basis1 Basis2) Basis3
-
-mexp :: (Floating a) => M2 a -> M2 a
-mexp = Func Exp
 
 var :: String -> M2 a
 var = Var
