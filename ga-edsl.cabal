@@ -53,6 +53,7 @@ extra-doc-files:    CHANGELOG.md
 
 common warnings
     ghc-options: -Wall
+    default-extensions: GADTs
 
 library
     -- Import common warning flags.
