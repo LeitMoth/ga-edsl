@@ -5,6 +5,7 @@
 -- https://geometrica.vialattea.net/en/the-rotor/
 -- https://rigidgeometricalgebra.org/wiki/index.php?title=Reverses
 -- https://jacquesheunis.com/post/rotors/
+-- https://en.wikipedia.org/wiki/Geometric_algebra
 
 module GA
   ( e1,
@@ -19,6 +20,10 @@ module GA
     e123,
     var,
     dot,
+    wedge,
+    (/\),
+    norm,
+    bnorm,
     brev,
     binv,
     tau,
@@ -37,7 +42,7 @@ import Data.Maybe (fromMaybe, listToMaybe)
 import Graphics.Gnuplot.Simple (plotMesh3d)
 
 offset :: (Fractional a) => (a, a, a) -> (a, a, a)
-offset (x, y, z) = (x + 0.1, y + 0.1, z + 0.1)
+offset (x, y, z) = (x, y, z)
 
 thicken :: (Fractional a) => [(a, a, a)] -> [[(a, a, a)]]
 thicken points = [points, map offset points]
@@ -49,7 +54,7 @@ plot :: [(String, M2 Double)] -> M2 Double -> IO ()
 plot vars thing = plotMesh3d [] [] graphdata
   where
     f time = eval (("t", Scal time) : vars) thing
-    points = map (vector . f) [0, 0.05 .. 1]
+    points = map (vector . f) [0, 0.01 .. 1]
     graphdata = thicken points
 
 vector :: (Num a, Eq a) => M2 a -> (a, a, a)
@@ -154,6 +159,18 @@ rotate plane angle x = b * x * binv b
 
 dot :: (Fractional a) => M2 a -> M2 a -> M2 a
 dot a b = 0.5 * (a * b + b * a)
+
+wedge :: (Fractional a) => M2 a -> M2 a -> M2 a
+wedge a b = 0.5 * (a * b - b * a)
+
+(/\) :: (Fractional a) => M2 a -> M2 a -> M2 a
+(/\) = wedge
+
+norm :: (Floating a, Eq a) => M2 a -> M2 a
+norm a = a / sqrt(dot a a)
+
+bnorm :: M2 Double -> M2 Double
+bnorm b = b / sqrt(dot (e123*b) (e123*b))
 
 e1 :: M2 Double
 e1 = Basis1
