@@ -14,6 +14,10 @@ data M2 a where
   Sum :: M2 a -> M2 a -> M2 a
   deriving Show
 
+e1 = Basis1
+e2 = Basis2
+e3 = Basis3
+
 instance Functor M2 where
   fmap f (Scal a) = Scal (f a)
   fmap f (Mul a b) = Mul (fmap f a) (fmap f b)
@@ -64,6 +68,45 @@ orderBasis = \case
   Mul (Mul Basis2 Basis3) Basis1 -> Mul (Mul Basis1 Basis2) Basis3
   Mul a b -> Mul (orderBasis a) (orderBasis b)
   a -> a
+
+data M3 a b where
+  Base :: b -> M3 a b
+  Prod :: a -> [M3 a b] -> M3 a b
+  Sum2 :: [M3 a b] -> M3 a b
+  deriving (Show)
+
+data Basis = X | Y | Z
+  deriving (Show)
+
+broil :: Num a => M2 a -> M3 a Basis
+broil = \case
+  Scal a -> Prod a []
+  Basis1 -> Base X
+  Basis2 -> Base Y
+  Basis3 -> Base Z
+  Mul a b -> Prod 1 [broil a, broil b]
+  Sum a b -> Sum2 [broil a, broil b]
+
+
+-- distribute
+
+bake :: Num a => M3 a b -> M3 a b
+bake = \case
+  Prod a (b : bs) -> bake $ Prod (a*b) (map bake bs ++ map bake cs)
+  Prod a ((Prod b bs) : cs) -> bake $ Prod (a*b) (map bake bs ++ map bake cs)
+  Sum2 ((Sum2 bs) : cs) -> bake $ Sum2 (bs ++ cs)
+  a -> a
+
+pullProd :: Num a => M3 a b -> M3 a b
+pullProd = \case
+  Prod s ms -> unpack $ foldr f (s,[]) ms 
+  where
+    f a (scal,list) = let a' = pullProd a in case a' of
+      Prod scal2 list2 -> (scal*scal2, list2 ++ list)
+      asdf -> (scal, asdf : list)
+    unpack (scal,list) = Prod scal list
+
+
 
 -- data Multivector where
 --   S :: Multivector
