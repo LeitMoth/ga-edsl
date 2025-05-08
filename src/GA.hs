@@ -2,8 +2,10 @@
 {-# LANGUAGE LambdaCase #-}
 
 module GA () where
+import Data.Function (on)
 
--- type Scalar = Double
+data FuncThing = Exp
+  deriving (Show)
 
 data M2 a where
   Scal :: a -> M2 a
@@ -12,11 +14,15 @@ data M2 a where
   Basis3 :: M2 a
   Mul :: M2 a -> M2 a -> M2 a
   Sum :: M2 a -> M2 a -> M2 a
+  Func :: FuncThing -> M2 a -> M2 a
   deriving Show
 
 e1 = Basis1
 e2 = Basis2
 e3 = Basis3
+
+mexp :: Floating a => M2 a -> M2 a
+mexp a = Func Exp a
 
 instance Functor M2 where
   fmap f (Scal a) = Scal (f a)
@@ -101,8 +107,8 @@ bake = \case
   Sum2 ((Sum2 bs) : cs) -> bake $ Sum2 (bs ++ cs)
   a -> a
 
-normalize :: Num a => M3 a b -> M3 a b
-normalize = pullProd
+-- normalize :: Num a => M3 a b -> M3 a b
+-- normalize = pullProd
 
 pullProd :: Num a => M3 a b -> M3 a b
 pullProd = \case
@@ -136,11 +142,61 @@ distribute = \case
         m -> Sum2 (m : ms1)
       f _ _ = error "BUG, should always be a Sum2"
 
-distributeFromRight :: Num a => [M3 a b] -> M3 a b -> M3 a b
-distributeFromRight ms p = Sum2 $ map (\x -> Prod 1 [x,p]) ms
+distributeFromRight :: Num a => a -> [M3 a b] -> M3 a b -> M3 a b
+distributeFromRight ambient ms p = Sum2 $ map (\x -> Prod ambient [x,p]) ms
 
-distributeFromLeft :: Num a => M3 a b -> [M3 a b] -> M3 a b
-distributeFromLeft p ms = Sum2 $ map (\x -> Prod 1 [p,x]) ms
+distributeFromLeft :: Num a => a -> M3 a b -> [M3 a b] -> M3 a b
+distributeFromLeft ambient p ms = Sum2 $ map (\x -> Prod ambient [p,x]) ms
+
+distribute2 :: Num a => a -> [M3 a b] -> [M3 a b]
+distribute2 ambient = \case
+  ((Sum2 ms):p2:rest) -> distribute2 ambient (distributeFromRight ambient ms p2 : rest)
+  (p1:(Sum2 ms):rest) -> distribute2 ambient (distributeFromLeft ambient p1 ms : rest)
+  (m1 : m2 :rest) -> distribute2 ambient $ flatten [m1, m2] : rest
+  [Sum2 ms] -> ms
+  [m] -> [m]
+  [] -> []
+
+flatten :: Num a => [M3 a b] -> M3 a b
+flatten = \case
+  [] -> Prod 0 []
+  (Prod s1 ms1 : Prod s2 ms2 : rest) -> (flatten (Prod (s1*s2) (ms1 ++ ms2) : rest))
+  [Prod s1 ms1] -> Prod s1 ms1
+  (p : rest) -> flatten (Prod 1 [p] : rest)
+
+
+-- ghci> map (foldr (++) []) $ sequence $ [a,b]
+
+data M4 a b where
+  M4 :: [[Atom a b]] -> M4 a b
+  deriving (Show)
+
+data Atom a b where
+  Base2 :: b -> Atom a b
+  Scalar2 :: a -> Atom a b
+  Func2 :: FuncThing -> M4 a b -> Atom a b
+  deriving (Show)
+
+m4mult :: M4 a b -> M4 a b -> M4 a b
+m4mult (M4 a) (M4 b) = M4 $ map concat (sequence [a,b])
+
+m4add :: M4 a b -> M4 a b -> M4 a b
+m4add (M4 a) (M4 b) = M4 $ a ++ b
+
+toM4 :: M2 a -> M4 a Basis
+toM4 = \case
+  Scal a -> M4 [[Scalar2 a]]
+  Basis1 -> M4 [[Base2 X]]
+  Basis2 -> M4 [[Base2 Y]]
+  Basis3 -> M4 [[Base2 Z]]
+  Mul a b -> (m4mult `on` toM4) a b
+  Sum a b -> (m4add `on` toM4) a b
+  Func f a -> M4 [[Func2 f (toM4 a)]]
+
+normalize :: Num a => M3 a b -> M3 a b
+normalize (Prod s ms) = Sum2 (distribute2 s ms)
+normalize (Sum2 ms) = pullSum $ Sum2 (map normalize ms)
+normalize (Base b) = Sum2 [Base b]
 
 
 pretty :: (Show a, Num a, Eq a, Show b) => M3 a b -> String
