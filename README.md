@@ -104,7 +104,7 @@ All of the code for this project is in `src/GA.hs`.
 I have put header comments to separate it into sections.
 The top half of the file includes the AST and
 will help a user of the EDSL understand better how to use it.
-The bottom half has more trick and tedious stuff, like
+The bottom half has more tricky and tedious stuff, like
 normalizing the expressions, and pretty-printing.
 
 ## Effort
