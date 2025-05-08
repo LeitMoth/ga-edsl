@@ -14,11 +14,13 @@ module GA
     e123,
     mexp,
     var,
+    eval,
   )
 where
 
 import Data.Function (on)
 import Data.List (partition)
+import qualified Data.Map as M
 import Data.Maybe (fromMaybe, listToMaybe)
 
 data FuncThing = Exp
@@ -40,6 +42,32 @@ instance (Ord a, Eq a, Num a, Show a) => Show (M2 a) where
 instance (Fractional a) => Fractional (M2 a) where
   fromRational = Scal . fromRational
   recip = error "inverse not implemented"
+
+type Ctx a = M.Map String (M2 a)
+
+interp :: (Fractional a) => Ctx a -> M2 a -> M2 a
+interp ctx = \case
+  Mul a b -> Mul (interp ctx a) (interp ctx b)
+  Sum a b -> Sum (interp ctx a) (interp ctx b)
+  Func f a -> case f of
+    Exp -> taylorExp 6 a'
+    where
+      a' = interp ctx a
+  Var name -> ctx M.! name
+  a -> a
+
+factorial :: Integer -> Integer
+factorial n = product [1 .. n]
+
+pow :: (Num a) => Integer -> M2 a -> M2 a
+pow n m = foldr Mul (Scal 1) (replicate (fromEnum n) m)
+
+taylorExp :: (Fractional a) => Integer -> M2 a -> M2 a
+taylorExp 0 _ = 1
+taylorExp level m = Sum (taylorExp (level - 1) m) (Mul (Scal (1 / fromInteger (factorial level))) (pow level m))
+
+eval :: (Fractional a) => [(String, M2 a)] -> M2 a -> M2 a
+eval vars = interp (M.fromList vars)
 
 e1 :: M2 Double
 e1 = Basis1
@@ -147,7 +175,10 @@ scalarCollapse as = list'
   where
     (scalars, list) = partition (\case Scalar2 _ -> True; _ -> False) as
     scalar = product $ map (\case Scalar2 a -> a; _ -> error "BUG, expected scalar") scalars
-    list' = if scalar == 1 then list else Scalar2 scalar : list
+    list' =
+      if scalar == 1 && not (null list)
+        then list
+        else Scalar2 scalar : list
 
 likeTermCollapse :: (Num a, Eq a, Eq b) => M4 a b -> M4 a b
 likeTermCollapse (M4 ms) = M4 (likeTermCollapseHelper ms)
