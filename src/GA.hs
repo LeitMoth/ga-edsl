@@ -19,6 +19,7 @@ module GA
     e32,
     e13,
     e123,
+    i,
     var,
     dot,
     wedge,
@@ -42,6 +43,10 @@ import qualified Data.Map as M
 import Data.Maybe (fromMaybe, listToMaybe)
 import Graphics.Gnuplot.Simple (plotMesh3d)
 
+--------------------------------------------------------------------------------
+--------------------------- Graphing -------------------------------------------
+--------------------------------------------------------------------------------
+
 offset :: (Fractional a) => (a, a, a) -> (a, a, a)
 offset (x, y, z) = (x, y, z + 0.01)
 
@@ -62,14 +67,22 @@ vector :: (Num a, Eq a) => M2 a -> (a, a, a)
 vector m = (x, y, z)
   where
     M4 m4 = toM4 m
-    findBasis b = maybe 0 scalarPart (find (((==) `on` nonScalarPart) [Base2 b]) m4)
+    findBasis b = maybe 0 scalarPart (find (((==) `on` nonScalarPart) [ABase b]) m4)
     x = findBasis X
     y = findBasis Y
     z = findBasis Z
 
-data FuncThing = Exp | Inv
+--------------------------------------------------------------------------------
+--------------------------- AST and common operations  -------------------------
+--------------------------------------------------------------------------------
+
+data Func = Exp | Inv
   deriving (Eq, Show)
 
+-- | M2 represents a multivector.
+--   This is built when the user types in input,
+--   and is later processed to M4 if we need a multivector
+--   in a normalized form.
 data M2 a where
   Scal :: a -> M2 a
   Basis1 :: M2 a
@@ -77,7 +90,7 @@ data M2 a where
   Basis3 :: M2 a
   Mul :: M2 a -> M2 a -> M2 a
   Sum :: M2 a -> M2 a -> M2 a
-  Func :: FuncThing -> M2 a -> M2 a
+  Func :: Func -> M2 a -> M2 a
   Var :: String -> M2 a
 
 instance (Ord a, Eq a, Num a, Show a) => Show (M2 a) where
@@ -88,8 +101,6 @@ instance (Fractional a) => Fractional (M2 a) where
   recip = \case
     Scal a -> Scal (1 / a)
     b -> Func Inv b
-
--- _ -> error "inverse not implemented"
 
 unimplementedTrig :: String
 unimplementedTrig = "Only pi and exp work, trig functions don't"
@@ -203,6 +214,9 @@ e13 = Mul Basis1 Basis3
 e123 :: M2 Double
 e123 = Mul (Mul Basis1 Basis2) Basis3
 
+i :: M2 Double
+i = e123
+
 var :: String -> M2 a
 var = Var
 
@@ -214,6 +228,10 @@ instance (Num a) => Num (M2 a) where
   fromInteger = Scal . fromInteger
   negate = Mul (Scal (-1))
 
+--------------------------------------------------------------------------------
+--------------------------- Normalized Representation --------------------------
+--------------------------------------------------------------------------------
+
 data Basis = X | Y | Z
   deriving (Eq, Ord)
 
@@ -223,17 +241,27 @@ instance Show Basis where
     Y -> "e2"
     Z -> "e3"
 
+-- | The idea of the M4 representation is similar to Disjunctive Normal Form in
+--   boolean logic. The outer list reprents a sum, and each inner list
+--   represents a product. Normalizing the above AST into this form
+--   is a good way to simplify before pretty-printing, and allows
+--   for nicities like grouping like terms.
 data M4 a b where
   M4 :: [[Atom a b]] -> M4 a b
   deriving (Eq, Show)
 
 data Atom a b where
-  Base2 :: b -> Atom a b
-  Scalar2 :: a -> Atom a b
-  Func2 :: FuncThing -> M4 a b -> Atom a b
-  Var2 :: String -> Atom a b
+  ABase :: b -> Atom a b
+  AScalar :: a -> Atom a b
+  AFunc :: Func -> M4 a b -> Atom a b
+  AVar :: String -> Atom a b
   deriving (Eq, Show)
 
+-- | Multiplies two M4 representations, handling distributivity
+--   to maintain the "disjusnctive normal form" style.
+--   Looking at the code doesn't give a great impression
+--   of how it works, but trying it on a few examples
+--   should clear things up quickly.
 m4mult :: (Num a, Eq a) => M4 a b -> M4 a b -> M4 a b
 m4mult (M4 a) (M4 b) = M4 $ map concat (sequence [a, b])
 
@@ -259,14 +287,14 @@ simplifyHelper = likeTermCollapse . m4map scalarCollapse . m4map basisCollapse
 
 toM4Helper :: (Num a, Eq a) => M2 a -> M4 a Basis
 toM4Helper = \case
-  Scal a -> M4 [[Scalar2 a]]
-  Basis1 -> M4 [[Base2 X]]
-  Basis2 -> M4 [[Base2 Y]]
-  Basis3 -> M4 [[Base2 Z]]
+  Scal a -> M4 [[AScalar a]]
+  Basis1 -> M4 [[ABase X]]
+  Basis2 -> M4 [[ABase Y]]
+  Basis3 -> M4 [[ABase Z]]
   Mul a b -> simplify $ (m4mult `on` toM4) a b
   Sum a b -> simplify $ (m4add `on` toM4) a b
-  Func f a -> M4 [[Func2 f (toM4 a)]]
-  Var name -> M4 [[Var2 name]]
+  Func f a -> M4 [[AFunc f (toM4 a)]]
+  Var name -> M4 [[AVar name]]
 
 m4map :: ([Atom a b] -> [Atom a b]) -> M4 a b -> M4 a b
 m4map f (M4 dnf) = M4 (map f dnf)
@@ -275,16 +303,20 @@ resolveScalar :: (Num a, Eq a) => M4 a b -> a
 resolveScalar = \case
   M4 m4 -> scalarPart (head m4)
 
+-- | Multiplies all the scalars in one term together,
+--   and neatly places the resulting scaler at the front of the term.
 scalarCollapse :: (Num a, Eq a) => [Atom a b] -> [Atom a b]
 scalarCollapse as = list'
   where
-    (scalars, list) = partition (\case Scalar2 _ -> True; _ -> False) as
-    scalar = product $ map (\case Scalar2 a -> a; _ -> error "BUG, expected scalar") scalars
+    (scalars, list) = partition (\case AScalar _ -> True; _ -> False) as
+    scalar = product $ map (\case AScalar a -> a; _ -> error "BUG, expected scalar") scalars
     list' =
       if scalar == 1 && not (null list)
         then list
-        else Scalar2 scalar : list
+        else AScalar scalar : list
 
+-- | Finds like terms within an M4 and groups them together,
+--   simplifying the overall expression.
 likeTermCollapse :: (Num a, Eq a, Eq b) => M4 a b -> M4 a b
 likeTermCollapse (M4 ms) = M4 (likeTermCollapseHelper ms)
 
@@ -297,11 +329,11 @@ likeTermCollapseHelper (p : ps) = list
     ps'' = likeTermCollapseHelper ps'
     list =
       if total /= 1
-        then (Scalar2 total : nonScalarPart p) : ps''
+        then (AScalar total : nonScalarPart p) : ps''
         else p : ps''
 
 nonScalarPart :: [Atom a b] -> [Atom a b]
-nonScalarPart = filter (\case Scalar2 _ -> False; _ -> True)
+nonScalarPart = filter (\case AScalar _ -> False; _ -> True)
 
 scalarPart :: (Num a, Eq a) => [Atom a b] -> a
 scalarPart = fromMaybe 1 . scalarPartMaybe
@@ -310,25 +342,29 @@ scalarPartMaybe :: (Num a, Eq a) => [Atom a b] -> Maybe a
 scalarPartMaybe as = do
   front <- listToMaybe $ scalarCollapse as
   case front of
-    Scalar2 a -> Just a
+    AScalar a -> Just a
     _ -> Nothing
 
+-- | Handles the "multiplication table" of basis vectors
+--   that determines the nature of the geometric algebra.
+--   Here we are assuming vector geometric algebra
+--   in 3 dimensions.
 basisCollapse :: (Num a, Ord b) => [Atom a b] -> [Atom a b]
-basisCollapse as = Scalar2 parity : list
+basisCollapse as = AScalar parity : list
   where
     (list, parity) = basisCollapseHelper as
 
 basisCollapseHelper :: (Num a, Ord b) => [Atom a b] -> ([Atom a b], a)
-basisCollapseHelper (Base2 b1 : Base2 b2 : rest) =
+basisCollapseHelper (ABase b1 : ABase b2 : rest) =
   case compare b1 b2 of
-    GT -> (Base2 b2 : tailing, parity')
+    GT -> (ABase b2 : tailing, parity')
       where
-        (tailing, parity) = basisCollapseHelper (Base2 b1 : rest)
+        (tailing, parity) = basisCollapseHelper (ABase b1 : rest)
         parity' = -parity
     EQ -> basisCollapseHelper rest -- Basis squared is 1
-    LT -> (Base2 b1 : tailing, parity')
+    LT -> (ABase b1 : tailing, parity')
       where
-        (tailing, parity) = basisCollapseHelper (Base2 b2 : rest)
+        (tailing, parity) = basisCollapseHelper (ABase b2 : rest)
         parity' = parity
 basisCollapseHelper (m1 : m2 : rest) =
   (m1 : tailing, parity')
@@ -338,6 +374,10 @@ basisCollapseHelper (m1 : m2 : rest) =
 basisCollapseHelper [] = ([], 1)
 basisCollapseHelper [m] = ([m], 1)
 
+--------------------------------------------------------------------------------
+----------------------------- Pretty Printing ----------------------------------
+--------------------------------------------------------------------------------
+
 joinOp :: String -> [String] -> String
 joinOp op = foldr1 (\x y -> x ++ op ++ y)
 
@@ -345,6 +385,11 @@ prettyM4 :: (Ord a, Show a, Num a, Eq a, Show b) => M4 a b -> String
 prettyM4 (M4 []) = "0"
 prettyM4 (M4 ms) = joinOp " + " $ map prettyProduct ms
 
+-- Most of the work is done by the normalized form.
+-- However, negation caused some trouble when trying to
+-- copy and paste the pretty printed output back in.
+-- So I had to add a large amount of logic to
+-- put parentheses around negative numbers.
 prettyProduct :: (Ord a, Show a, Num a, Eq a, Show b) => [Atom a b] -> String
 prettyProduct [] = "1"
 prettyProduct as = full
@@ -371,11 +416,11 @@ prettyProduct as = full
 
 prettyAtom :: (Ord a, Show a, Num a, Eq a, Show b) => Atom a b -> String
 prettyAtom = \case
-  Base2 b -> show b
-  Scalar2 s -> show s
-  Func2 Exp m -> "exp(" ++ prettyM4 m ++ ")"
-  Func2 Inv m -> "(" ++ prettyM4 m ++ ")^-1"
-  Var2 name -> name
+  ABase b -> show b
+  AScalar s -> show s
+  AFunc Exp m -> "exp(" ++ prettyM4 m ++ ")"
+  AFunc Inv m -> "(" ++ prettyM4 m ++ ")^-1"
+  AVar name -> name
 
 pretty :: (Ord a, Show a, Num a, Eq a) => M2 a -> String
 pretty = prettyM4 . toM4
