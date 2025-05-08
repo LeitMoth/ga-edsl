@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 
-module GA (someFunc) where
+module GA () where
 
 -- type Scalar = Double
 
