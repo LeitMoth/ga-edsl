@@ -15,6 +15,7 @@ data M2 a where
   Mul :: M2 a -> M2 a -> M2 a
   Sum :: M2 a -> M2 a -> M2 a
   Func :: FuncThing -> M2 a -> M2 a
+  Var :: String -> M2 a
   deriving Show
 
 e1 = Basis1
@@ -22,7 +23,10 @@ e2 = Basis2
 e3 = Basis3
 
 mexp :: Floating a => M2 a -> M2 a
-mexp a = Func Exp a
+mexp = Func Exp
+
+var :: String -> M2 a
+var = Var
 
 instance Functor M2 where
   fmap f (Scal a) = Scal (f a)
@@ -175,6 +179,7 @@ data Atom a b where
   Base2 :: b -> Atom a b
   Scalar2 :: a -> Atom a b
   Func2 :: FuncThing -> M4 a b -> Atom a b
+  Var2 :: String -> Atom a b
   deriving (Show)
 
 m4mult :: M4 a b -> M4 a b -> M4 a b
@@ -192,12 +197,12 @@ toM4 = \case
   Mul a b -> (m4mult `on` toM4) a b
   Sum a b -> (m4add `on` toM4) a b
   Func f a -> M4 [[Func2 f (toM4 a)]]
+  Var name -> M4 [[Var2 name]]
 
 normalize :: Num a => M3 a b -> M3 a b
 normalize (Prod s ms) = Sum2 (distribute2 s ms)
 normalize (Sum2 ms) = pullSum $ Sum2 (map normalize ms)
 normalize (Base b) = Sum2 [Base b]
-
 
 pretty :: (Show a, Num a, Eq a, Show b) => M3 a b -> String
 pretty = \case
