@@ -4,6 +4,7 @@
 module GA () where
 
 import Data.Function (on)
+import Data.List (partition)
 
 data FuncThing = Exp
   deriving (Show)
@@ -94,7 +95,7 @@ funmap f (Prod s ms) = Prod s (map f ms)
 funmap f (Sum2 ms) = Sum2 (map f ms)
 
 data Basis = X | Y | Z
-  deriving (Show)
+  deriving (Eq, Ord, Show)
 
 broil :: (Num a) => M2 a -> M3 a Basis
 broil = \case
@@ -183,16 +184,24 @@ data Atom a b where
   Var2 :: String -> Atom a b
   deriving (Show)
 
-m4mult :: M4 a b -> M4 a b -> M4 a b
+m4mult :: (Num a, Eq a) => M4 a b -> M4 a b -> M4 a b
 m4mult (M4 a) (M4 b) = M4 $ map concat (sequence [a, b])
+
+-- frontCleanup :: (Num a, Eq a) => [Atom a b] -> [Atom a b]
+-- frontCleanup (Scalar2 s1 : Scalar2 s2 : rest) = frontCleanup (Scalar2 (s1 * s2) : rest)
+-- frontCleanup (Scalar2 s1 : rest) =
+--   if s1 == 1
+--     then rest
+--     else Scalar2 s1 : rest
+-- frontCleanup as = as
 
 m4add :: M4 a b -> M4 a b -> M4 a b
 m4add (M4 a) (M4 b) = M4 $ a ++ b
 
-toM4 :: M2 a -> M4 a Basis
-toM4 = m4map basisCollapse . toM4Helper
+toM4 :: (Num a, Eq a) => M2 a -> M4 a Basis
+toM4 = m4map scalarCollapse . m4map basisCollapse . toM4Helper
 
-toM4Helper :: M2 a -> M4 a Basis
+toM4Helper :: (Num a, Eq a) => M2 a -> M4 a Basis
 toM4Helper = \case
   Scal a -> M4 [[Scalar2 a]]
   Basis1 -> M4 [[Base2 X]]
@@ -206,30 +215,37 @@ toM4Helper = \case
 m4map :: ([Atom a b] -> [Atom a b]) -> M4 a b -> M4 a b
 m4map f (M4 dnf) = M4 (map f dnf)
 
-basisCollapse :: (Num a) => [Atom a b] -> [Atom a b]
-basisCollapse as = (Scalar2 parity) : list
+scalarCollapse :: (Num a, Eq a) => [Atom a b] -> [Atom a b]
+scalarCollapse as = list'
+  where
+    (scalars, list) = partition (\case Scalar2 _ -> True; _ -> False) as
+    scalar = product $ map (\case Scalar2 a -> a; _ -> error "BUG, expected scalar") scalars
+    list' = if scalar == 1 then list else Scalar2 scalar : list
+
+basisCollapse :: (Num a, Ord b) => [Atom a b] -> [Atom a b]
+basisCollapse as = Scalar2 parity : list
   where
     (list, parity) = basisCollapseHelper as
 
-basisCollapseHelper :: (Num a) => [Atom a b] -> ([Atom a b], a)
--- basisCollapseHelper (a : b : rest) = if a > b then (b : basisCollapseHelper (a : rest)) and parity = if a and b are basis
+basisCollapseHelper :: (Num a, Ord b) => [Atom a b] -> ([Atom a b], a)
 basisCollapseHelper (Base2 b1 : Base2 b2 : rest) =
-  case b1 > b2 of
-    True -> (Base2 b2 : tailing, parity')
+  case compare b1 b2 of
+    GT -> (Base2 b2 : tailing, parity')
       where
         (tailing, parity) = basisCollapseHelper (Base2 b1 : rest)
         parity' = -parity
-    False -> (Base2 b1 : tailing, parity')
+    EQ -> basisCollapseHelper rest -- Basis squared is 1
+    LT -> (Base2 b1 : tailing, parity')
       where
         (tailing, parity) = basisCollapseHelper (Base2 b2 : rest)
-        parity' = -parity
-basisCollapseHelper (m1:m2:rest) =
-    (m1 : tailing, parity')
-      where
-        (tailing, parity) = basisCollapseHelper (m2 : rest)
-        parity' = -parity
-basisCollapseHelper [] = ([],1)
-basisCollapseHelper [m] = ([m],1)
+        parity' = parity
+basisCollapseHelper (m1 : m2 : rest) =
+  (m1 : tailing, parity')
+  where
+    (tailing, parity) = basisCollapseHelper (m2 : rest)
+    parity' = parity
+basisCollapseHelper [] = ([], 1)
+basisCollapseHelper [m] = ([m], 1)
 
 normalize :: (Num a) => M3 a b -> M3 a b
 normalize (Prod s ms) = Sum2 (distribute2 s ms)
