@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 
 module GA () where
+
 import Data.Function (on)
 
 data FuncThing = Exp
@@ -16,13 +17,15 @@ data M2 a where
   Sum :: M2 a -> M2 a -> M2 a
   Func :: FuncThing -> M2 a -> M2 a
   Var :: String -> M2 a
-  deriving Show
+  deriving (Show)
 
 e1 = Basis1
+
 e2 = Basis2
+
 e3 = Basis3
 
-mexp :: Floating a => M2 a -> M2 a
+mexp :: (Floating a) => M2 a -> M2 a
 mexp = Func Exp
 
 var :: String -> M2 a
@@ -36,7 +39,7 @@ instance Functor M2 where
   fmap _ Basis2 = Basis2
   fmap _ Basis3 = Basis3
 
-instance Num a => Num (M2 a) where
+instance (Num a) => Num (M2 a) where
   (+) = Sum
   (*) = Mul
   abs = error "not implemented"
@@ -44,7 +47,7 @@ instance Num a => Num (M2 a) where
   fromInteger = Scal . fromInteger
   negate = fmap negate
 
-simplify :: Num a => M2 a -> M2 a
+simplify :: (Num a) => M2 a -> M2 a
 simplify = \case
   Scal a -> Scal a
   Basis1 -> Basis1
@@ -60,17 +63,17 @@ simplify = \case
   Mul a b -> fixup (Mul (simplify a) (simplify b))
   Sum a b -> fixup (Sum (simplify a) (simplify b))
 
-fixup :: Num a => M2 a -> M2 a
+fixup :: (Num a) => M2 a -> M2 a
 fixup = orderBasis . pullScalar
 
-pullScalar :: Num a => M2 a -> M2 a
-pullScalar (Mul (Scal a) (Scal b)) = Scal (a*b)
+pullScalar :: (Num a) => M2 a -> M2 a
+pullScalar (Mul (Scal a) (Scal b)) = Scal (a * b)
 pullScalar (Mul a (Scal b)) = pullScalar (Mul (Scal b) a)
 pullScalar (Mul (Mul (Scal a) b) c) = Mul (Scal a) (Mul b c)
 pullScalar (Mul c (Mul (Scal a) b)) = Mul (Scal a) (Mul b c)
 pullScalar a = a
 
-orderBasis :: Num a => M2 a -> M2 a
+orderBasis :: (Num a) => M2 a -> M2 a
 orderBasis = \case
   Mul Basis2 Basis1 -> Mul (-1) (Mul Basis1 Basis2)
   Mul Basis1 Basis3 -> Mul (-1) (Mul Basis3 Basis1)
@@ -93,7 +96,7 @@ funmap f (Sum2 ms) = Sum2 (map f ms)
 data Basis = X | Y | Z
   deriving (Show)
 
-broil :: Num a => M2 a -> M3 a Basis
+broil :: (Num a) => M2 a -> M3 a Basis
 broil = \case
   Scal a -> Prod a []
   Basis1 -> Base X
@@ -102,30 +105,29 @@ broil = \case
   Mul a b -> Prod 1 [broil a, broil b]
   Sum a b -> Sum2 [broil a, broil b]
 
-
 -- distribute
 
-bake :: Num a => M3 a b -> M3 a b
+bake :: (Num a) => M3 a b -> M3 a b
 bake = \case
-  Prod a ((Prod b bs) : cs) -> bake $ Prod (a*b) (map bake bs ++ map bake cs)
+  Prod a ((Prod b bs) : cs) -> bake $ Prod (a * b) (map bake bs ++ map bake cs)
   Sum2 ((Sum2 bs) : cs) -> bake $ Sum2 (bs ++ cs)
   a -> a
 
 -- normalize :: Num a => M3 a b -> M3 a b
 -- normalize = pullProd
 
-pullProd :: Num a => M3 a b -> M3 a b
+pullProd :: (Num a) => M3 a b -> M3 a b
 pullProd = \case
   Prod s ms -> foldr f (Prod s []) ms
     where
       f a (Prod s1 ms1) = case pullProd a of
-        Prod s2 ms2 -> Prod (s1*s2) (ms2 ++ ms1)
+        Prod s2 ms2 -> Prod (s1 * s2) (ms2 ++ ms1)
         m -> Prod s1 (m : ms1)
       f _ _ = error "BUG, should always be a Prod"
   Sum2 ms -> funmap pullProd (pullSum (Sum2 ms))
   a -> a
 
-pullSum :: Num a => M3 a b -> M3 a b
+pullSum :: (Num a) => M3 a b -> M3 a b
 pullSum = \case
   Sum2 ms -> foldr f (Sum2 []) ms
     where
@@ -135,7 +137,7 @@ pullSum = \case
       f _ _ = error "BUG, should always be a Sum2"
   a -> a
 
-distribute :: Num a => M3 a b -> M3 a b
+distribute :: (Num a) => M3 a b -> M3 a b
 distribute = \case
   Base b -> Base b
   Sum2 ms -> Sum2 ms
@@ -146,28 +148,27 @@ distribute = \case
         m -> Sum2 (m : ms1)
       f _ _ = error "BUG, should always be a Sum2"
 
-distributeFromRight :: Num a => a -> [M3 a b] -> M3 a b -> M3 a b
-distributeFromRight ambient ms p = Sum2 $ map (\x -> Prod ambient [x,p]) ms
+distributeFromRight :: (Num a) => a -> [M3 a b] -> M3 a b -> M3 a b
+distributeFromRight ambient ms p = Sum2 $ map (\x -> Prod ambient [x, p]) ms
 
-distributeFromLeft :: Num a => a -> M3 a b -> [M3 a b] -> M3 a b
-distributeFromLeft ambient p ms = Sum2 $ map (\x -> Prod ambient [p,x]) ms
+distributeFromLeft :: (Num a) => a -> M3 a b -> [M3 a b] -> M3 a b
+distributeFromLeft ambient p ms = Sum2 $ map (\x -> Prod ambient [p, x]) ms
 
-distribute2 :: Num a => a -> [M3 a b] -> [M3 a b]
+distribute2 :: (Num a) => a -> [M3 a b] -> [M3 a b]
 distribute2 ambient = \case
-  ((Sum2 ms):p2:rest) -> distribute2 ambient (distributeFromRight ambient ms p2 : rest)
-  (p1:(Sum2 ms):rest) -> distribute2 ambient (distributeFromLeft ambient p1 ms : rest)
-  (m1 : m2 :rest) -> distribute2 ambient $ flatten [m1, m2] : rest
+  ((Sum2 ms) : p2 : rest) -> distribute2 ambient (distributeFromRight ambient ms p2 : rest)
+  (p1 : (Sum2 ms) : rest) -> distribute2 ambient (distributeFromLeft ambient p1 ms : rest)
+  (m1 : m2 : rest) -> distribute2 ambient $ flatten [m1, m2] : rest
   [Sum2 ms] -> ms
   [m] -> [m]
   [] -> []
 
-flatten :: Num a => [M3 a b] -> M3 a b
+flatten :: (Num a) => [M3 a b] -> M3 a b
 flatten = \case
   [] -> Prod 0 []
-  (Prod s1 ms1 : Prod s2 ms2 : rest) -> (flatten (Prod (s1*s2) (ms1 ++ ms2) : rest))
+  (Prod s1 ms1 : Prod s2 ms2 : rest) -> (flatten (Prod (s1 * s2) (ms1 ++ ms2) : rest))
   [Prod s1 ms1] -> Prod s1 ms1
   (p : rest) -> flatten (Prod 1 [p] : rest)
-
 
 -- ghci> map (foldr (++) []) $ sequence $ [a,b]
 
@@ -183,13 +184,16 @@ data Atom a b where
   deriving (Show)
 
 m4mult :: M4 a b -> M4 a b -> M4 a b
-m4mult (M4 a) (M4 b) = M4 $ map concat (sequence [a,b])
+m4mult (M4 a) (M4 b) = M4 $ map concat (sequence [a, b])
 
 m4add :: M4 a b -> M4 a b -> M4 a b
 m4add (M4 a) (M4 b) = M4 $ a ++ b
 
 toM4 :: M2 a -> M4 a Basis
-toM4 = \case
+toM4 = m4map basisCollapse . toM4Helper
+
+toM4Helper :: M2 a -> M4 a Basis
+toM4Helper = \case
   Scal a -> M4 [[Scalar2 a]]
   Basis1 -> M4 [[Base2 X]]
   Basis2 -> M4 [[Base2 Y]]
@@ -199,7 +203,35 @@ toM4 = \case
   Func f a -> M4 [[Func2 f (toM4 a)]]
   Var name -> M4 [[Var2 name]]
 
-normalize :: Num a => M3 a b -> M3 a b
+m4map :: ([Atom a b] -> [Atom a b]) -> M4 a b -> M4 a b
+m4map f (M4 dnf) = M4 (map f dnf)
+
+basisCollapse :: (Num a) => [Atom a b] -> [Atom a b]
+basisCollapse as = (Scalar2 parity) : list
+  where
+    (list, parity) = basisCollapseHelper as
+
+basisCollapseHelper :: (Num a) => [Atom a b] -> ([Atom a b], a)
+-- basisCollapseHelper (a : b : rest) = if a > b then (b : basisCollapseHelper (a : rest)) and parity = if a and b are basis
+basisCollapseHelper (Base2 b1 : Base2 b2 : rest) =
+  case b1 > b2 of
+    True -> (Base2 b2 : tailing, parity')
+      where
+        (tailing, parity) = basisCollapseHelper (Base2 b1 : rest)
+        parity' = -parity
+    False -> (Base2 b1 : tailing, parity')
+      where
+        (tailing, parity) = basisCollapseHelper (Base2 b2 : rest)
+        parity' = -parity
+basisCollapseHelper (m1:m2:rest) =
+    (m1 : tailing, parity')
+      where
+        (tailing, parity) = basisCollapseHelper (m2 : rest)
+        parity' = -parity
+basisCollapseHelper [] = ([],1)
+basisCollapseHelper [m] = ([m],1)
+
+normalize :: (Num a) => M3 a b -> M3 a b
 normalize (Prod s ms) = Sum2 (distribute2 s ms)
 normalize (Sum2 ms) = pullSum $ Sum2 (map normalize ms)
 normalize (Base b) = Sum2 [Base b]
