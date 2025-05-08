@@ -60,7 +60,7 @@ plot :: [(String, M2 Double)] -> M2 Double -> IO ()
 plot vars thing = plotMesh3d [] [] graphdata
   where
     f time = eval (("t", Scal time) : vars) thing
-    points = map (vector . f) [0, 0.01 .. 1]
+    points = map (vector . f) [0, 0.1 .. 1]
     graphdata = thicken points
 
 vector :: (Num a, Eq a) => M2 a -> (a, a, a)
