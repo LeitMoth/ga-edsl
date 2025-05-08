@@ -4,6 +4,10 @@
 -- https://jacquesheunis.com/post/rotors/
 -- https://en.wikipedia.org/wiki/Geometric_algebra
 
+-- Try:
+-- ghci> b = bnorm ((e1+e2) /\ (e2+e3))
+-- ghci> plot [] $ rotate b (t*tau) e1
+
 module GA
   ( e1,
     e2,
@@ -39,7 +43,7 @@ import Data.Maybe (fromMaybe, listToMaybe)
 import Graphics.Gnuplot.Simple (plotMesh3d)
 
 offset :: (Fractional a) => (a, a, a) -> (a, a, a)
-offset (x, y, z) = (x, y, z)
+offset (x, y, z) = (x, y, z + 0.01)
 
 thicken :: (Fractional a) => [(a, a, a)] -> [[(a, a, a)]]
 thicken points = [points, map offset points]
@@ -164,10 +168,10 @@ wedge a b = 0.5 * (a * b - b * a)
 (/\) = wedge
 
 norm :: (Floating a, Eq a) => M2 a -> M2 a
-norm a = a / sqrt(dot a a)
+norm a = a / sqrt (dot a a)
 
 bnorm :: M2 Double -> M2 Double
-bnorm b = b / sqrt(dot (e123*b) (e123*b))
+bnorm b = b / sqrt (dot (e123 * b) (e123 * b))
 
 e1 :: M2 Double
 e1 = Basis1
