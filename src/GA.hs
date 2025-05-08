@@ -34,7 +34,7 @@ data M2 a where
   Func :: FuncThing -> M2 a -> M2 a
   Var :: String -> M2 a
 
-instance (Eq a, Num a, Show a) => Show (M2 a) where
+instance (Ord a, Eq a, Num a, Show a) => Show (M2 a) where
   show = pretty
 
 instance (Fractional a) => Fractional (M2 a) where
@@ -168,7 +168,10 @@ nonScalarPart :: [Atom a b] -> [Atom a b]
 nonScalarPart = filter (\case Scalar2 _ -> False; _ -> True)
 
 scalarPart :: (Num a, Eq a) => [Atom a b] -> a
-scalarPart as = fromMaybe 0 $ do
+scalarPart = fromMaybe 0 . scalarPartMaybe
+
+scalarPartMaybe :: (Num a, Eq a) => [Atom a b] -> Maybe a
+scalarPartMaybe as = do
   front <- listToMaybe $ scalarCollapse as
   case front of
     Scalar2 a -> Just a
@@ -202,20 +205,40 @@ basisCollapseHelper [m] = ([m], 1)
 joinOp :: String -> [String] -> String
 joinOp op = foldr1 (\x y -> x ++ op ++ y)
 
-prettyM4 :: (Show a, Num a, Eq a, Show b) => M4 a b -> String
+prettyM4 :: (Ord a, Show a, Num a, Eq a, Show b) => M4 a b -> String
 prettyM4 (M4 []) = "0"
 prettyM4 (M4 ms) = joinOp " + " $ map prettyProduct ms
 
-prettyProduct :: (Show a, Num a, Eq a, Show b) => [Atom a b] -> String
+prettyProduct :: (Ord a, Show a, Num a, Eq a, Show b) => [Atom a b] -> String
 prettyProduct [] = "1"
-prettyProduct as = joinOp "*" $ map prettyAtom as
+prettyProduct as = full
+  where
+    s = fromMaybe 1 (scalarPartMaybe as) -- if we can't find one, default to identity
+    rest = nonScalarPart as
+    full =
+      case compare s 0 of
+        EQ -> "0"
+        GT ->
+          if s == 1
+            then
+              if null rest
+                then "1"
+                else joinOp "*" $ map prettyAtom rest
+            else joinOp "*" $ map prettyAtom as
+        LT ->
+          if null rest
+            then "(" ++ show s ++ ")"
+            else
+              if s == -1
+                then "(-1)" ++ "*" ++ joinOp "*" (map prettyAtom rest)
+                else "(" ++ show s ++ ")" ++ "*" ++ joinOp "*" (map prettyAtom rest)
 
-prettyAtom :: (Show a, Num a, Eq a, Show b) => Atom a b -> String
+prettyAtom :: (Ord a, Show a, Num a, Eq a, Show b) => Atom a b -> String
 prettyAtom = \case
   Base2 b -> show b
   Scalar2 s -> show s
   Func2 Exp m -> "mexp(" ++ prettyM4 m ++ ")"
   Var2 name -> name
 
-pretty :: (Show a, Num a, Eq a) => M2 a -> String
+pretty :: (Ord a, Show a, Num a, Eq a) => M2 a -> String
 pretty = prettyM4 . toM4
