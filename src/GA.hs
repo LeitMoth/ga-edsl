@@ -19,9 +19,10 @@ where
 
 import Data.Function (on)
 import Data.List (partition)
+import Data.Maybe (fromMaybe, listToMaybe)
 
 data FuncThing = Exp
-  deriving (Show)
+  deriving (Eq, Show)
 
 data M2 a where
   Scal :: a -> M2 a
@@ -95,14 +96,14 @@ instance Show Basis where
 
 data M4 a b where
   M4 :: [[Atom a b]] -> M4 a b
-  deriving (Show)
+  deriving (Eq, Show)
 
 data Atom a b where
   Base2 :: b -> Atom a b
   Scalar2 :: a -> Atom a b
   Func2 :: FuncThing -> M4 a b -> Atom a b
   Var2 :: String -> Atom a b
-  deriving (Show)
+  deriving (Eq, Show)
 
 m4mult :: (Num a, Eq a) => M4 a b -> M4 a b -> M4 a b
 m4mult (M4 a) (M4 b) = M4 $ map concat (sequence [a, b])
@@ -125,7 +126,7 @@ simplify :: (Num a, Eq a, Ord b) => M4 a b -> M4 a b
 simplify = simplifyHelper . simplifyHelper . simplifyHelper . simplifyHelper
 
 simplifyHelper :: (Num a, Eq a, Ord b) => M4 a b -> M4 a b
-simplifyHelper = m4map scalarCollapse . m4map basisCollapse
+simplifyHelper = likeTermCollapse . m4map scalarCollapse . m4map basisCollapse
 
 toM4Helper :: (Num a, Eq a) => M2 a -> M4 a Basis
 toM4Helper = \case
@@ -148,8 +149,30 @@ scalarCollapse as = list'
     scalar = product $ map (\case Scalar2 a -> a; _ -> error "BUG, expected scalar") scalars
     list' = if scalar == 1 then list else Scalar2 scalar : list
 
--- likeTermCollapse :: [[Atom a b]] -> [[Atom a b]]
--- likeTermCollapse (p:ps) =
+likeTermCollapse :: (Num a, Eq a, Eq b) => M4 a b -> M4 a b
+likeTermCollapse (M4 ms) = M4 (likeTermCollapseHelper ms)
+
+likeTermCollapseHelper :: (Num a, Eq a, Eq b) => [[Atom a b]] -> [[Atom a b]]
+likeTermCollapseHelper [] = []
+likeTermCollapseHelper (p : ps) = list
+  where
+    (likeTerms, ps') = partition (((==) `on` nonScalarPart) p) (p : ps)
+    total = sum $ map scalarPart likeTerms
+    ps'' = likeTermCollapseHelper ps'
+    list =
+      if total /= 0
+        then (Scalar2 total : nonScalarPart p) : ps''
+        else p : ps''
+
+nonScalarPart :: [Atom a b] -> [Atom a b]
+nonScalarPart = filter (\case Scalar2 _ -> False; _ -> True)
+
+scalarPart :: (Num a, Eq a) => [Atom a b] -> a
+scalarPart as = fromMaybe 0 $ do
+  front <- listToMaybe $ scalarCollapse as
+  case front of
+    Scalar2 a -> Just a
+    _ -> Nothing
 
 basisCollapse :: (Num a, Ord b) => [Atom a b] -> [Atom a b]
 basisCollapse as = Scalar2 parity : list
