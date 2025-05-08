@@ -1,6 +1,3 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase #-}
-
 -- References:
 -- https://geometrica.vialattea.net/en/the-rotor/
 -- https://rigidgeometricalgebra.org/wiki/index.php?title=Reverses
