@@ -107,14 +107,6 @@ data Atom a b where
 m4mult :: (Num a, Eq a) => M4 a b -> M4 a b -> M4 a b
 m4mult (M4 a) (M4 b) = M4 $ map concat (sequence [a, b])
 
--- frontCleanup :: (Num a, Eq a) => [Atom a b] -> [Atom a b]
--- frontCleanup (Scalar2 s1 : Scalar2 s2 : rest) = frontCleanup (Scalar2 (s1 * s2) : rest)
--- frontCleanup (Scalar2 s1 : rest) =
---   if s1 == 1
---     then rest
---     else Scalar2 s1 : rest
--- frontCleanup as = as
-
 m4add :: M4 a b -> M4 a b -> M4 a b
 m4add (M4 a) (M4 b) = M4 $ a ++ b
 
